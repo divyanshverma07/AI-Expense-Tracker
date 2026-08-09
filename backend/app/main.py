@@ -2,6 +2,13 @@ from fastapi import FastAPI
 from sqlalchemy import text
 
 from .database import engine
+from . import models
+
+from .routers import users
+from .routers import expenses
+from .routers import income
+from .routers import budget
+
 
 app = FastAPI(
     title="AI Expense Tracker API",
@@ -10,6 +17,20 @@ app = FastAPI(
 )
 
 
+# ==========================================
+# ROUTERS
+# ==========================================
+
+app.include_router(users.router)
+app.include_router(expenses.router)
+app.include_router(income.router)
+app.include_router(budget.router)
+
+
+# ==========================================
+# ROOT
+# ==========================================
+
 @app.get("/")
 def root():
     return {
@@ -17,8 +38,13 @@ def root():
     }
 
 
+# ==========================================
+# DATABASE TEST
+# ==========================================
+
 @app.get("/test-db")
 def test_database():
+
     try:
         with engine.connect() as connection:
             connection.execute(text("SELECT 1"))
@@ -29,6 +55,7 @@ def test_database():
         }
 
     except Exception as e:
+
         return {
             "status": "error",
             "message": str(e)
