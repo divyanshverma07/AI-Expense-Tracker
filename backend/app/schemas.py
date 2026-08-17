@@ -31,7 +31,9 @@ class LoginRequest(BaseModel):
     email: EmailStr
     password: str
 
-
+class TokenResponse(BaseModel):
+    access_token: str
+    token_type: str
 # ==========================================
 # INCOME SCHEMAS
 # ==========================================
@@ -116,4 +118,26 @@ class PredictionResponse(BaseModel):
 
     model_config = ConfigDict(from_attributes=True)
     
-    
+    # ==========================================
+# DASHBOARD SCHEMAS
+# ==========================================
+
+class CategoryExpense(BaseModel):
+    category: str
+    amount: Decimal
+
+
+class DashboardResponse(BaseModel):
+    total_income: Decimal
+    total_expenses: Decimal
+    total_savings: Decimal
+
+    monthly_income: Decimal
+    monthly_expenses: Decimal
+
+    category_wise_expenses: list[CategoryExpense]
+
+    monthly_budget: Decimal
+    budget_used: Decimal
+    budget_usage_percentage: float
+  

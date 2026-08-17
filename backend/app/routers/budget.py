@@ -3,6 +3,8 @@ from sqlalchemy.orm import Session
 
 from .. import crud, schemas
 from ..database import get_db
+from ..auth import get_current_user
+from ..models import User
 
 
 router = APIRouter(
@@ -17,22 +19,14 @@ router = APIRouter(
     status_code=status.HTTP_201_CREATED
 )
 def create_budget(
-    user_id: int,
     budget: schemas.BudgetCreate,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
 ):
-    user = crud.get_user(db, user_id)
-
-    if not user:
-        raise HTTPException(
-            status_code=404,
-            detail="User not found"
-        )
-
     return crud.create_budget(
         db,
         budget,
-        user_id
+        current_user.user_id
     )
 
 
@@ -41,12 +35,12 @@ def create_budget(
     response_model=list[schemas.BudgetResponse]
 )
 def get_budgets(
-    user_id: int,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
 ):
     return crud.get_budgets(
         db,
-        user_id
+        current_user.user_id
     )
 
 
@@ -56,13 +50,13 @@ def get_budgets(
 )
 def get_single_budget(
     budget_id: int,
-    user_id: int,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
 ):
     budget = crud.get_budget(
         db,
         budget_id,
-        user_id
+        current_user.user_id
     )
 
     if not budget:
@@ -80,14 +74,14 @@ def get_single_budget(
 )
 def update_budget(
     budget_id: int,
-    user_id: int,
     budget: schemas.BudgetCreate,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
 ):
     db_budget = crud.get_budget(
         db,
         budget_id,
-        user_id
+        current_user.user_id
     )
 
     if not db_budget:
@@ -108,13 +102,13 @@ def update_budget(
 )
 def delete_budget(
     budget_id: int,
-    user_id: int,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
 ):
     db_budget = crud.get_budget(
         db,
         budget_id,
-        user_id
+        current_user.user_id
     )
 
     if not db_budget:

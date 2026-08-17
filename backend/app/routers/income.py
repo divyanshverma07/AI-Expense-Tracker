@@ -3,6 +3,8 @@ from sqlalchemy.orm import Session
 
 from .. import crud, schemas
 from ..database import get_db
+from ..auth import get_current_user
+from ..models import User
 
 
 router = APIRouter(
@@ -17,22 +19,14 @@ router = APIRouter(
     status_code=status.HTTP_201_CREATED
 )
 def create_income(
-    user_id: int,
     income: schemas.IncomeCreate,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
 ):
-    user = crud.get_user(db, user_id)
-
-    if not user:
-        raise HTTPException(
-            status_code=404,
-            detail="User not found"
-        )
-
     return crud.create_income(
         db,
         income,
-        user_id
+        current_user.user_id
     )
 
 
@@ -41,12 +35,12 @@ def create_income(
     response_model=list[schemas.IncomeResponse]
 )
 def get_income(
-    user_id: int,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
 ):
     return crud.get_incomes(
         db,
-        user_id
+        current_user.user_id
     )
 
 
@@ -56,13 +50,13 @@ def get_income(
 )
 def get_single_income(
     income_id: int,
-    user_id: int,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
 ):
     income = crud.get_income(
         db,
         income_id,
-        user_id
+        current_user.user_id
     )
 
     if not income:
@@ -80,14 +74,14 @@ def get_single_income(
 )
 def update_income(
     income_id: int,
-    user_id: int,
     income: schemas.IncomeCreate,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
 ):
     db_income = crud.get_income(
         db,
         income_id,
-        user_id
+        current_user.user_id
     )
 
     if not db_income:
@@ -108,13 +102,13 @@ def update_income(
 )
 def delete_income(
     income_id: int,
-    user_id: int,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
 ):
     db_income = crud.get_income(
         db,
         income_id,
-        user_id
+        current_user.user_id
     )
 
     if not db_income:
