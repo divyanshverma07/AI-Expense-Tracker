@@ -1,5 +1,6 @@
 from datetime import date
-from sqlalchemy import func
+from sqlalchemy import func, extract
+
 
 from sqlalchemy.orm import Session
 
@@ -100,10 +101,12 @@ def get_expense(
 def update_expense(
     db: Session,
     db_expense: models.Expense,
-    expense: schemas.ExpenseCreate
+    expense: schemas.ExpenseCreate,
+    category: str | None = None
 ):
     db_expense.amount = expense.amount
     db_expense.description = expense.description
+    db_expense.category = category
     db_expense.payment_method = expense.payment_method
     db_expense.expense_date = expense.expense_date
 
@@ -453,3 +456,216 @@ def get_dashboard_data(
     }
     
     
+# ==========================================
+# FINANCIAL PROFILE CRUD
+# ==========================================
+
+def get_financial_profile(
+    db: Session,
+    user_id: int
+):
+    return (
+        db.query(models.FinancialProfile)
+        .filter(
+            models.FinancialProfile.user_id == user_id
+        )
+        .first()
+    )
+
+
+def create_financial_profile(
+    db: Session,
+    profile: schemas.FinancialProfileCreate,
+    user_id: int
+):
+    # Check if profile already exists
+    existing_profile = get_financial_profile(
+        db,
+        user_id
+    )
+
+    if existing_profile:
+        return None
+
+    db_profile = models.FinancialProfile(
+        user_id=user_id,
+        age=profile.age,
+        dependents=profile.dependents,
+        occupation=profile.occupation,
+        city_tier=profile.city_tier,
+        desired_savings_percentage=profile.desired_savings_percentage,
+        desired_savings=profile.desired_savings
+    )
+
+    db.add(db_profile)
+    db.commit()
+    db.refresh(db_profile)
+
+    return db_profile
+
+
+def update_financial_profile(
+    db: Session,
+    db_profile: models.FinancialProfile,
+    profile: schemas.FinancialProfileCreate
+):
+    db_profile.age = profile.age
+    db_profile.dependents = profile.dependents
+    db_profile.occupation = profile.occupation
+    db_profile.city_tier = profile.city_tier
+    db_profile.desired_savings_percentage = (
+        profile.desired_savings_percentage
+    )
+    db_profile.desired_savings = profile.desired_savings
+
+    db.commit()
+    db.refresh(db_profile)
+
+    return db_profile      
+
+# ==========================================
+# FINANCIAL HEALTH DATA
+# ==========================================
+
+def get_financial_health_data(
+    db: Session,
+    user_id: int
+):
+    from datetime import date
+
+    today = date.today()
+
+    current_month = today.month
+    current_year = today.year
+
+    # --------------------------------------
+    # Get financial profile
+    # --------------------------------------
+
+    profile = (
+        db.query(models.FinancialProfile)
+        .filter(
+            models.FinancialProfile.user_id == user_id
+        )
+        .first()
+    )
+
+    if profile is None:
+        return None, "Financial profile not found"
+
+    # --------------------------------------
+    # Calculate current month income
+    # --------------------------------------
+
+    income_result = (
+        db.query(
+            func.coalesce(
+                func.sum(models.Income.amount),
+                0
+            )
+        )
+        .filter(
+            models.Income.user_id == user_id,
+            extract(
+                "month",
+                models.Income.income_date
+            ) == current_month,
+            extract(
+                "year",
+                models.Income.income_date
+            ) == current_year
+        )
+        .scalar()
+    )
+
+    income = float(income_result or 0)
+
+    if income <= 0:
+        return None, "No income found for the current month"
+
+    # --------------------------------------
+    # Get current month expenses
+    # --------------------------------------
+
+    expenses = (
+        db.query(models.Expense)
+        .filter(
+            models.Expense.user_id == user_id,
+            extract(
+                "month",
+                models.Expense.expense_date
+            ) == current_month,
+            extract(
+                "year",
+                models.Expense.expense_date
+            ) == current_year
+        )
+        .all()
+    )
+
+    # --------------------------------------
+    # Initialize ML categories
+    # --------------------------------------
+
+    financial_data = {
+        "Income": income,
+        "Age": profile.age,
+        "Dependents": profile.dependents,
+        "Occupation": profile.occupation,
+        "City_Tier": profile.city_tier,
+
+        "Rent": 0,
+        "Loan_Repayment": 0,
+        "Insurance": 0,
+        "Groceries": 0,
+        "Transport": 0,
+        "Eating_Out": 0,
+        "Entertainment": 0,
+        "Utilities": 0,
+        "Healthcare": 0,
+        "Education": 0,
+        "Miscellaneous": 0,
+
+        "Desired_Savings_Percentage": float(
+            profile.desired_savings_percentage
+        ),
+
+        "Desired_Savings": float(
+            profile.desired_savings
+        )
+    }
+
+    # --------------------------------------
+    # Expense category mapping
+    # --------------------------------------
+
+    category_mapping = {
+        "Food": "Eating_Out",
+        "Groceries": "Groceries",
+        "Rent": "Rent",
+        "EMI": "Loan_Repayment",
+        "Insurance": "Insurance",
+        "Transport": "Transport",
+        "Entertainment": "Entertainment",
+        "Utilities": "Utilities",
+        "Healthcare": "Healthcare",
+        "Education": "Education",
+        "Miscellaneous": "Miscellaneous"
+    }
+
+    # --------------------------------------
+    # Add expenses to ML features
+    # --------------------------------------
+
+    for expense in expenses:
+
+        category = expense.category
+        amount = float(expense.amount or 0)
+
+        if category in category_mapping:
+
+            feature_name = category_mapping[category]
+
+            financial_data[feature_name] += amount
+
+    return financial_data, None

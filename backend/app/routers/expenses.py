@@ -6,6 +6,8 @@ from ..database import get_db
 from ..auth import get_current_user
 from ..models import User
 
+from ..services.expense_classifier import predict_expense_category
+
 
 router = APIRouter(
     prefix="/expenses",
@@ -23,10 +25,23 @@ def create_expense(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
+    # ------------------------------------------
+    # AI EXPENSE CATEGORY PREDICTION
+    # ------------------------------------------
+
+    predicted_category = predict_expense_category(
+        expense.description
+    )
+
+    # ------------------------------------------
+    # SAVE EXPENSE
+    # ------------------------------------------
+
     return crud.create_expense(
         db,
         expense,
-        current_user.user_id
+        current_user.user_id,
+        predicted_category
     )
 
 

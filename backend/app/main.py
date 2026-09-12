@@ -11,7 +11,9 @@ from .routers import expenses
 from .routers import income
 from .routers import budget
 from .routers import dashboard
-
+from .routers import financial_profile
+from .routers import financial_health
+from .routers import receipt
 
 # ==========================================
 # CREATE FASTAPI APPLICATION
@@ -33,6 +35,9 @@ app.include_router(expenses.router)
 app.include_router(income.router)
 app.include_router(budget.router)
 app.include_router(dashboard.router)
+app.include_router(financial_profile.router)
+app.include_router(financial_health.router)
+app.include_router(receipt.router)
 
 
 # ==========================================

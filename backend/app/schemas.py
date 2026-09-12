@@ -141,3 +141,34 @@ class DashboardResponse(BaseModel):
     budget_used: Decimal
     budget_usage_percentage: float
   
+# ==========================================
+# FINANCIAL PROFILE SCHEMAS
+# ==========================================
+
+class FinancialProfileCreate(BaseModel):
+    age: int = Field(ge=18, le=100)
+    dependents: int = Field(ge=0, le=20)
+    occupation: str = Field(min_length=1, max_length=50)
+    city_tier: str = Field(min_length=1, max_length=20)
+    desired_savings_percentage: Decimal = Field(
+        ge=0,
+        le=100
+    )
+    desired_savings: Decimal = Field(
+        ge=0
+    )
+
+
+class FinancialProfileResponse(BaseModel):
+    profile_id: int
+    user_id: int
+    age: int
+    dependents: int
+    occupation: str
+    city_tier: str
+    desired_savings_percentage: Decimal
+    desired_savings: Decimal
+    created_at: datetime
+    updated_at: datetime | None
+
+    model_config = ConfigDict(from_attributes=True)

@@ -54,6 +54,12 @@ class User(Base):
         back_populates="user",
         cascade="all, delete-orphan"
     )
+    financial_profile = relationship(
+    "FinancialProfile",
+    back_populates="user",
+    uselist=False,
+    cascade="all, delete-orphan"
+)
 
 
 # ==========================================
@@ -252,4 +258,73 @@ class Prediction(Base):
     user = relationship(
         "User",
         back_populates="predictions"
+    )
+    
+    # ==========================================
+# FINANCIAL PROFILE MODEL
+# ==========================================
+
+class FinancialProfile(Base):
+    __tablename__ = "financial_profiles"
+
+    profile_id = Column(
+        Integer,
+        primary_key=True,
+        index=True
+    )
+
+    user_id = Column(
+        Integer,
+        ForeignKey("users.user_id", ondelete="CASCADE"),
+        nullable=False,
+        unique=True,
+        index=True
+    )
+
+    age = Column(
+        Integer,
+        nullable=False
+    )
+
+    dependents = Column(
+        Integer,
+        nullable=False,
+        default=0
+    )
+
+    occupation = Column(
+        String(50),
+        nullable=False
+    )
+
+    city_tier = Column(
+        String(20),
+        nullable=False
+    )
+
+    desired_savings_percentage = Column(
+        Numeric(5, 2),
+        nullable=False
+    )
+
+    desired_savings = Column(
+        Numeric(10, 2),
+        nullable=False
+    )
+
+    created_at = Column(
+        DateTime,
+        server_default=func.now()
+    )
+
+    updated_at = Column(
+        DateTime,
+        server_default=func.now(),
+        onupdate=func.now()
+    )
+
+    # Relationship
+    user = relationship(
+        "User",
+        back_populates="financial_profile"
     )
