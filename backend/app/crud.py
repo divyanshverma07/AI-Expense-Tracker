@@ -668,4 +668,492 @@ def get_financial_health_data(
 
             financial_data[feature_name] += amount
 
-    return financial_data, None
+    return financial_data, None   
+
+def get_expense_forecasting_data(db, user_id):
+    return db.query(models.Expense).filter(
+        models.Expense.user_id == user_id
+    ).order_by(
+        models.Expense.expense_date.asc()
+    ).all()
+    
+# ==========================================
+# FINANCIAL GOAL CRUD
+# ==========================================
+
+def create_financial_goal(db, goal, user_id):
+    db_goal = models.FinancialGoal(
+        user_id=user_id,
+        goal_name=goal.goal_name,
+        target_amount=goal.target_amount,
+        current_amount=goal.current_amount,
+        target_date=goal.target_date,
+        priority=goal.priority,
+        status="Active"
+    )
+
+    db.add(db_goal)
+    db.commit()
+    db.refresh(db_goal)
+
+    return db_goal
+def get_financial_goals(db, user_id):
+    return db.query(models.FinancialGoal).filter(
+        models.FinancialGoal.user_id == user_id
+    ).order_by(
+        models.FinancialGoal.target_date.asc()
+    ).all()
+    
+def get_financial_goal(db, goal_id, user_id):
+    return db.query(models.FinancialGoal).filter(
+        models.FinancialGoal.goal_id == goal_id,
+        models.FinancialGoal.user_id == user_id
+    ).first()
+    
+def update_financial_goal(db, db_goal, goal):
+    if goal.goal_name is not None:
+        db_goal.goal_name = goal.goal_name
+
+    if goal.target_amount is not None:
+        db_goal.target_amount = goal.target_amount
+
+    if goal.current_amount is not None:
+        db_goal.current_amount = goal.current_amount
+
+    if goal.target_date is not None:
+        db_goal.target_date = goal.target_date
+
+    if goal.priority is not None:
+        db_goal.priority = goal.priority
+
+    if goal.status is not None:
+        db_goal.status = goal.status
+
+    # Automatically mark goal as completed
+    # when current amount reaches target amount.
+    if db_goal.current_amount >= db_goal.target_amount:
+        db_goal.status = "Completed"
+
+    db.commit()
+    db.refresh(db_goal)
+
+    return db_goal
+
+def delete_financial_goal(db, db_goal):
+    db.delete(db_goal)
+    db.commit()
+
+    return True
+
+def get_goal_plan(db, goal, user_id):
+    today = date.today()
+
+    # Remaining amount
+    remaining_amount = max(
+        float(goal.target_amount) - float(goal.current_amount),
+        0
+    )
+
+    # Calculate months remaining
+    months_remaining = (
+        (goal.target_date.year - today.year) * 12
+        + (goal.target_date.month - today.month)
+    )
+
+    # If target date is already reached
+    if goal.target_date <= today:
+        months_remaining = 0
+
+    # Required monthly saving
+    if remaining_amount <= 0:
+        required_monthly_saving = 0
+    elif months_remaining > 0:
+        required_monthly_saving = (
+            remaining_amount / months_remaining
+        )
+    else:
+        required_monthly_saving = remaining_amount
+
+    # ------------------------------------------
+    # Estimate user's monthly saving capacity
+    # ------------------------------------------
+
+    current_month = today.month
+    current_year = today.year
+
+    monthly_income = db.query(
+        func.coalesce(func.sum(models.Income.amount), 0)
+    ).filter(
+        models.Income.user_id == user_id,
+        extract("month", models.Income.income_date) == current_month,
+        extract("year", models.Income.income_date) == current_year
+    ).scalar()
+
+    monthly_expenses = db.query(
+        func.coalesce(func.sum(models.Expense.amount), 0)
+    ).filter(
+        models.Expense.user_id == user_id,
+        extract("month", models.Expense.expense_date) == current_month,
+        extract("year", models.Expense.expense_date) == current_year
+    ).scalar()
+
+    monthly_income = float(monthly_income or 0)
+    monthly_expenses = float(monthly_expenses or 0)
+
+    estimated_monthly_saving = max(
+        monthly_income - monthly_expenses,
+        0
+    )
+
+    feasible = (
+        estimated_monthly_saving >= required_monthly_saving
+    )
+
+    return {
+        "goal_id": goal.goal_id,
+        "goal_name": goal.goal_name,
+        "target_amount": goal.target_amount,
+        "current_amount": goal.current_amount,
+        "remaining_amount": round(remaining_amount, 2),
+        "target_date": goal.target_date,
+        "months_remaining": months_remaining,
+        "required_monthly_saving": round(
+            required_monthly_saving,
+            2
+        ),
+        "estimated_monthly_saving": round(
+            estimated_monthly_saving,
+            2
+        ),
+        "feasible": feasible,
+        "status": goal.status
+    }
+    
+# ==========================================
+# FINANCIAL INSIGHTS DATA
+# ==========================================
+
+def get_financial_insights_data(db, user_id):
+    from datetime import date
+
+    today = date.today()
+    current_month = today.month
+    current_year = today.year
+
+    # ------------------------------------------
+    # Monthly Income
+    # ------------------------------------------
+
+    monthly_income = db.query(
+        func.coalesce(
+            func.sum(models.Income.amount),
+            0
+        )
+    ).filter(
+        models.Income.user_id == user_id,
+        extract(
+            "month",
+            models.Income.income_date
+        ) == current_month,
+        extract(
+            "year",
+            models.Income.income_date
+        ) == current_year
+    ).scalar()
+
+    # ------------------------------------------
+    # Monthly Expenses
+    # ------------------------------------------
+
+    monthly_expenses = db.query(
+        func.coalesce(
+            func.sum(models.Expense.amount),
+            0
+        )
+    ).filter(
+        models.Expense.user_id == user_id,
+        extract(
+            "month",
+            models.Expense.expense_date
+        ) == current_month,
+        extract(
+            "year",
+            models.Expense.expense_date
+        ) == current_year
+    ).scalar()
+
+    monthly_income = float(monthly_income or 0)
+    monthly_expenses = float(monthly_expenses or 0)
+
+    monthly_savings = (
+        monthly_income - monthly_expenses
+    )
+
+    # ------------------------------------------
+    # Category-wise Expenses
+    # ------------------------------------------
+
+    expenses = db.query(
+        models.Expense
+    ).filter(
+        models.Expense.user_id == user_id,
+        extract(
+            "month",
+            models.Expense.expense_date
+        ) == current_month,
+        extract(
+            "year",
+            models.Expense.expense_date
+        ) == current_year
+    ).all()
+
+    category_expenses = {}
+
+    for expense in expenses:
+
+        category = (
+            expense.category
+            or "Miscellaneous"
+        )
+
+        category_expenses[category] = (
+            category_expenses.get(category, 0)
+            + float(expense.amount)
+        )
+
+    # ------------------------------------------
+    # Financial Health
+    # ------------------------------------------
+
+    financial_health_score = None
+    financial_health = None
+
+    try:
+        financial_health_data, health_error = (
+            get_financial_health_data(
+                db,
+                user_id
+            )
+        )
+
+        if not health_error:
+
+            from .services.financial_health import (
+                predict_financial_health
+            )
+
+            health_result = predict_financial_health(
+                financial_health_data
+            )
+
+            financial_health_score = (
+                health_result.get(
+                    "financial_health_score"
+                )
+            )
+
+            financial_health = (
+                health_result.get(
+                    "financial_health"
+                )
+            )
+
+    except Exception:
+        # Financial insights should still work
+        # even if health prediction is unavailable.
+        pass
+
+    # ------------------------------------------
+    # Goals
+    # ------------------------------------------
+
+    goals = get_financial_goals(
+        db,
+        user_id
+    )
+
+    goal_data = []
+
+    for goal in goals:
+
+        try:
+            plan = get_goal_plan(
+                db,
+                goal,
+                user_id
+            )
+
+            goal_data.append({
+                "goal_name": plan["goal_name"],
+                "required_monthly_saving": plan[
+                    "required_monthly_saving"
+                ],
+                "estimated_monthly_saving": plan[
+                    "estimated_monthly_saving"
+                ],
+                "feasible": plan["feasible"],
+                "status": plan["status"]
+            })
+
+        except Exception:
+            continue
+
+    return {
+        "monthly_income": monthly_income,
+        "monthly_expenses": monthly_expenses,
+        "monthly_savings": monthly_savings,
+        "category_expenses": category_expenses,
+        "financial_health_score": financial_health_score,
+        "financial_health": financial_health,
+        "goals": goal_data
+    } 
+    
+from collections import defaultdict
+from datetime import date
+
+import pandas as pd
+from sklearn.linear_model import LinearRegression
+
+
+def predict_budget(expenses):
+    """
+    Predict next month's category-wise expenses
+    and recommend a budget for each category.
+    """
+
+    if not expenses:
+        raise ValueError(
+            "No expense history available for budget prediction."
+        )
+
+    # --------------------------------------------------
+    # 1. Group expenses by month and category
+    # --------------------------------------------------
+
+    monthly_category = defaultdict(lambda: defaultdict(float))
+
+    for expense in expenses:
+        month = expense.expense_date.strftime("%Y-%m")
+        category = expense.category or "Miscellaneous"
+
+        monthly_category[month][category] += float(
+            expense.amount
+        )
+
+    sorted_months = sorted(monthly_category.keys())
+
+    if len(sorted_months) < 2:
+        raise ValueError(
+            "At least 2 months of expense history are required "
+            "for budget prediction."
+        )
+
+    # --------------------------------------------------
+    # 2. Get all categories
+    # --------------------------------------------------
+
+    categories = set()
+
+    for month in sorted_months:
+        categories.update(
+            monthly_category[month].keys()
+        )
+
+    # --------------------------------------------------
+    # 3. Predict each category
+    # --------------------------------------------------
+
+    predictions = []
+
+    next_month = (
+        pd.Period(sorted_months[-1], freq="M") + 1
+    )
+
+    for category in sorted(categories):
+
+        values = [
+            monthly_category[month].get(
+                category,
+                0
+            )
+            for month in sorted_months
+        ]
+
+        X = pd.DataFrame({
+            "month_index": range(len(values))
+        })
+
+        y = values
+
+        model = LinearRegression()
+        model.fit(X, y)
+
+        predicted_expense = model.predict(
+            [[len(values)]]
+        )[0]
+
+        predicted_expense = max(
+            0,
+            float(predicted_expense)
+        )
+
+        # --------------------------------------------------
+        # Recommended budget
+        #
+        # Add 10% safety buffer so the user has some
+        # flexibility if actual spending is slightly higher.
+        # --------------------------------------------------
+
+        recommended_budget = predicted_expense * 1.10
+
+        predictions.append({
+            "category": category,
+            "predicted_expense": round(
+                predicted_expense,
+                2
+            ),
+            "recommended_budget": round(
+                recommended_budget,
+                2
+            )
+        })
+
+    # --------------------------------------------------
+    # 4. Calculate totals
+    # --------------------------------------------------
+
+    predicted_total = sum(
+        item["predicted_expense"]
+        for item in predictions
+    )
+
+    recommended_total = sum(
+        item["recommended_budget"]
+        for item in predictions
+    )
+
+    return {
+        "forecast_month": str(next_month),
+        "historical_months": len(sorted_months),
+        "predicted_total": round(
+            predicted_total,
+            2
+        ),
+        "recommended_total_budget": round(
+            recommended_total,
+            2
+        ),
+        "category_predictions": predictions
+    }
+    # ==========================================
+# BUDGET PREDICTION DATA
+# ==========================================
+
+def get_budget_prediction_data(db, user_id):
+    return db.query(
+        models.Expense
+    ).filter(
+        models.Expense.user_id == user_id
+    ).order_by(
+        models.Expense.expense_date.asc()
+    ).all()

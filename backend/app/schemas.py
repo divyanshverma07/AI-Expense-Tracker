@@ -172,3 +172,92 @@ class FinancialProfileResponse(BaseModel):
     updated_at: datetime | None
 
     model_config = ConfigDict(from_attributes=True)
+
+# ==========================================
+# FINANCIAL GOAL SCHEMAS
+# ==========================================
+
+class FinancialGoalCreate(BaseModel):
+    goal_name: str = Field(
+        min_length=1,
+        max_length=100
+    )
+
+    target_amount: Decimal = Field(
+        gt=0
+    )
+
+    current_amount: Decimal = Field(
+        ge=0
+    )
+
+    target_date: date
+
+    priority: str = Field(
+        default="Medium",
+        min_length=1,
+        max_length=20
+    )
+
+
+class FinancialGoalUpdate(BaseModel):
+    goal_name: str | None = Field(
+        default=None,
+        min_length=1,
+        max_length=100
+    )
+
+    target_amount: Decimal | None = Field(
+        default=None,
+        gt=0
+    )
+
+    current_amount: Decimal | None = Field(
+        default=None,
+        ge=0
+    )
+
+    target_date: date | None = None
+
+    priority: str | None = Field(
+        default=None,
+        min_length=1,
+        max_length=20
+    )
+
+    status: str | None = Field(
+        default=None,
+        min_length=1,
+        max_length=20
+    )
+
+
+class FinancialGoalResponse(BaseModel):
+    goal_id: int
+    user_id: int
+    goal_name: str
+    target_amount: Decimal
+    current_amount: Decimal
+    target_date: date
+    priority: str
+    status: str
+    created_at: datetime
+    updated_at: datetime | None
+
+    model_config = ConfigDict(
+        from_attributes=True
+    )
+
+
+class FinancialGoalPlanResponse(BaseModel):
+    goal_id: int
+    goal_name: str
+    target_amount: Decimal
+    current_amount: Decimal
+    remaining_amount: Decimal
+    target_date: date
+    months_remaining: int
+    required_monthly_saving: Decimal
+    estimated_monthly_saving: Decimal
+    feasible: bool
+    status: str

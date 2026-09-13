@@ -59,7 +59,13 @@ class User(Base):
     back_populates="user",
     uselist=False,
     cascade="all, delete-orphan"
-)
+    )
+
+    goals = relationship(
+    "FinancialGoal",
+    back_populates="user",
+    cascade="all, delete-orphan"
+    )
 
 
 # ==========================================
@@ -327,4 +333,74 @@ class FinancialProfile(Base):
     user = relationship(
         "User",
         back_populates="financial_profile"
+    )
+    
+# ==========================================
+# FINANCIAL GOAL MODEL
+# ==========================================
+
+class FinancialGoal(Base):
+    __tablename__ = "financial_goals"
+
+    goal_id = Column(
+        Integer,
+        primary_key=True,
+        index=True
+    )
+
+    user_id = Column(
+        Integer,
+        ForeignKey("users.user_id", ondelete="CASCADE"),
+        nullable=False,
+        index=True
+    )
+
+    goal_name = Column(
+        String(100),
+        nullable=False
+    )
+
+    target_amount = Column(
+        Numeric(10, 2),
+        nullable=False
+    )
+
+    current_amount = Column(
+        Numeric(10, 2),
+        nullable=False,
+        default=0
+    )
+
+    target_date = Column(
+        Date,
+        nullable=False
+    )
+
+    priority = Column(
+        String(20),
+        nullable=False,
+        default="Medium"
+    )
+
+    status = Column(
+        String(20),
+        nullable=False,
+        default="Active"
+    )
+
+    created_at = Column(
+        DateTime,
+        server_default=func.now()
+    )
+
+    updated_at = Column(
+        DateTime,
+        server_default=func.now(),
+        onupdate=func.now()
+    )
+
+    # Relationship
+    user = relationship(
+        "User",
+        back_populates="goals"
     )

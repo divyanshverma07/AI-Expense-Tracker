@@ -14,6 +14,10 @@ from .routers import dashboard
 from .routers import financial_profile
 from .routers import financial_health
 from .routers import receipt
+from .routers import expense_prediction
+from .routers import goals
+from .routers import financial_insights
+from .routers import budget_prediction
 
 # ==========================================
 # CREATE FASTAPI APPLICATION
@@ -31,14 +35,22 @@ app = FastAPI(
 # ==========================================
 
 app.include_router(users.router)
+
+# Static expense-related routes MUST come before
+# /expenses/{expense_id}
+app.include_router(expense_prediction.router)
+app.include_router(receipt.router)
+
 app.include_router(expenses.router)
+
 app.include_router(income.router)
+app.include_router(budget_prediction.router)
 app.include_router(budget.router)
 app.include_router(dashboard.router)
 app.include_router(financial_profile.router)
 app.include_router(financial_health.router)
-app.include_router(receipt.router)
-
+app.include_router(goals.router)
+app.include_router(financial_insights.router)
 
 # ==========================================
 # ROOT
