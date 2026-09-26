@@ -1,29 +1,34 @@
 import os
 import re
+from datetime import datetime
 
 import cv2
 import pytesseract
-from .expense_classifier import predict_expense_category
 
-# ==========================================
+
+# ============================================================
 # TESSERACT CONFIGURATION
-# ==========================================
+# ============================================================
 
 TESSERACT_PATH = r"C:\Program Files\Tesseract-OCR\tesseract.exe"
 
-pytesseract.pytesseract.tesseract_cmd = TESSERACT_PATH
+if os.path.exists(TESSERACT_PATH):
+    pytesseract.pytesseract.tesseract_cmd = TESSERACT_PATH
 
 
-# ==========================================
+# ============================================================
 # IMAGE PREPROCESSING
-# ==========================================
+# ============================================================
 
-def preprocess_receipt(image_path: str):
+def preprocess_receipt(image_path):
+    """
+    Prepare receipt image for OCR.
+    """
 
     image = cv2.imread(image_path)
 
     if image is None:
-        raise ValueError("Unable to read receipt image")
+        raise ValueError("Unable to read receipt image.")
 
     # Convert to grayscale
     gray = cv2.cvtColor(
@@ -31,7 +36,7 @@ def preprocess_receipt(image_path: str):
         cv2.COLOR_BGR2GRAY
     )
 
-    # Upscale the image
+    # Upscale small receipts
     gray = cv2.resize(
         gray,
         None,
@@ -49,7 +54,7 @@ def preprocess_receipt(image_path: str):
         cv2.NORM_MINMAX
     )
 
-    # OTSU threshold
+    # Threshold
     threshold = cv2.threshold(
         gray,
         0,
@@ -60,177 +65,69 @@ def preprocess_receipt(image_path: str):
     return gray, threshold
 
 
-# ==========================================
+# ============================================================
 # OCR TEXT EXTRACTION
-# ==========================================
+# ============================================================
 
-def extract_text_from_receipt(
-    image_path: str
-) -> str:
+def extract_text(image_path):
+    """
+    Extract text using multiple OCR modes.
+    """
 
     gray, threshold = preprocess_receipt(
         image_path
     )
 
-    # Use threshold OCR as the primary result.
-    # It gives better results for this receipt.
-    text = pytesseract.image_to_string(
+    texts = []
+
+    # OCR mode 6
+    text_psm6 = pytesseract.image_to_string(
         threshold,
         config="--psm 6"
     )
 
-    # If OCR returned very little text,
-    # fallback to grayscale.
-    if len(text.strip()) < 50:
+    texts.append(text_psm6)
 
-        text = pytesseract.image_to_string(
-            gray,
-            config="--psm 6"
-        )
-
-    return text.strip()
-
-
-# ==========================================
-# AMOUNT EXTRACTION
-# ==========================================
-
-def extract_amount(text: str):
-
-    # Normalize OCR text
-    normalized = re.sub(
-        r'\s+',
-        ' ',
-        text
+    # OCR mode 11
+    text_psm11 = pytesseract.image_to_string(
+        threshold,
+        config="--psm 11"
     )
 
-    # Highest priority:
-    # Total Invoice Amount
-    patterns = [
-        r'total\s+invoice\s+amount\s*[:\-]?\s*'
-        r'(?:₹|rs\.?|inr)?\s*'
-        r'([\d,]+(?:\.\d{1,2})?)',
+    texts.append(text_psm11)
 
-        r'grand\s+total\s*[:\-]?\s*'
-        r'(?:₹|rs\.?|inr)?\s*'
-        r'([\d,]+(?:\.\d{1,2})?)',
-
-        r'gross\s+total\s*[:\-]?\s*'
-        r'(?:₹|rs\.?|inr)?\s*'
-        r'([\d,]+(?:\.\d{1,2})?)',
-
-        r'total\s*[:\-]?\s*'
-        r'(?:₹|rs\.?|inr)?\s*'
-        r'([\d,]+(?:\.\d{1,2})?)'
-    ]
-
-    for pattern in patterns:
-
-        matches = re.findall(
-            pattern,
-            normalized,
-            flags=re.IGNORECASE
-        )
-
-        if matches:
-
-            try:
-                return float(
-                    matches[-1].replace(",", "")
-                )
-
-            except ValueError:
-                continue
-
-    return None
-
-
-# ==========================================
-# DATE EXTRACTION
-# ==========================================
-
-def extract_date(text: str):
-
-    # First look specifically around the invoice number.
-    invoice_pattern = (
-        r'invoice\s*no\.?\s*[:\-]?\s*'
-        r'.{0,80}?'
-        r'(\d{1,2}[/-]\d{1,2}[/-]\d{4})'
+    # Fallback using grayscale image
+    text_gray = pytesseract.image_to_string(
+        gray,
+        config="--psm 6"
     )
 
-    match = re.search(
-        invoice_pattern,
-        text,
-        flags=re.IGNORECASE
+    texts.append(text_gray)
+
+    # Choose the result with the most useful text
+    best_text = max(
+        texts,
+        key=lambda text: len(
+            clean_ocr_text(text)
+        )
     )
 
-    if match:
-        return match.group(1)
-
-    # General fallback
-    patterns = [
-        r'\b(\d{1,2}[/-]\d{1,2}[/-]\d{4})\b',
-        r'\b(\d{4}[/-]\d{1,2}[/-]\d{1,2})\b'
-    ]
-
-    for pattern in patterns:
-
-        match = re.search(
-            pattern,
-            text
-        )
-
-        if match:
-            return match.group(1)
-
-    return None
+    return best_text.strip()
 
 
-# ==========================================
-# MERCHANT EXTRACTION
-# ==========================================
+# ============================================================
+# CLEAN OCR TEXT
+# ============================================================
 
-def extract_merchant(text: str):
+def clean_ocr_text(text):
+    """
+    Remove excessive blank lines and spaces.
+    """
 
-    lines = [
-        line.strip()
-        for line in text.splitlines()
-        if line.strip()
-    ]
+    if not text:
+        return ""
 
-    # OCR can misread Zudio as Zucio, Zutio, etc.
-    zudio_variations = [
-        "zudio",
-        "zucio",
-        "zutio",
-        "zud10",
-        "zudlo"
-    ]
-
-    for line in lines:
-
-        lower_line = line.lower()
-
-        for variation in zudio_variations:
-
-            if variation in lower_line:
-                return "Zudio"
-
-    # Fallback to company name
-    for line in lines:
-
-        if "trent limited" in line.lower():
-            return "Trent Limited"
-
-    return None
-
-# ==========================================
-# DESCRIPTION EXTRACTION
-# ==========================================
-
-def extract_description(text: str):
-
-    descriptions = []
+    lines = []
 
     for line in text.splitlines():
 
@@ -239,93 +136,524 @@ def extract_description(text: str):
         if not line:
             continue
 
-        lower_line = line.lower()
+        line = re.sub(
+            r"\s+",
+            " ",
+            line
+        )
 
-        if not any(
-            keyword in lower_line
+        lines.append(line)
+
+    return "\n".join(lines)
+
+
+# ============================================================
+# AMOUNT EXTRACTION
+# ============================================================
+
+def extract_amount(text):
+    """
+    Extract final payable / invoice amount.
+    """
+
+    if not text:
+        return None
+
+    # Priority patterns
+    patterns = [
+        # Amount due ₹400.00
+        r"amount\s+due[^\d₹]*₹?\s*([\d,]+(?:\.\d{1,2})?)",
+
+        # Grand Total ₹400.00
+        r"grand\s+total[^\d₹]*₹?\s*([\d,]+(?:\.\d{1,2})?)",
+
+        # Net Amount
+        r"net\s+amount[^\d₹]*₹?\s*([\d,]+(?:\.\d{1,2})?)",
+
+        # Total Amount
+        r"total\s+amount[^\d₹]*₹?\s*([\d,]+(?:\.\d{1,2})?)",
+
+        # Current Balance
+        r"current\s+bal\.?[^\d₹]*₹?\s*([\d,]+(?:\.\d{1,2})?)",
+
+        # Balance
+        r"balance[^\d₹]*₹?\s*([\d,]+(?:\.\d{1,2})?)",
+
+        # Total
+        r"\btotal\b[^\d₹]*₹?\s*([\d,]+(?:\.\d{1,2})?)",
+    ]
+
+    # First try important labels
+    for pattern in patterns:
+
+        matches = re.findall(
+            pattern,
+            text,
+            flags=re.IGNORECASE
+        )
+
+        if matches:
+
+            try:
+                values = [
+                    float(
+                        value.replace(",", "")
+                    )
+                    for value in matches
+                ]
+
+                if values:
+                    return max(values)
+
+            except ValueError:
+                pass
+
+    # Fallback:
+    # Find all monetary-looking values
+    amounts = re.findall(
+        r"(?:₹|Rs\.?|INR)?\s*([\d,]+\.\d{1,2})",
+        text,
+        flags=re.IGNORECASE
+    )
+
+    values = []
+
+    for value in amounts:
+
+        try:
+            values.append(
+                float(value.replace(",", ""))
+            )
+        except ValueError:
+            continue
+
+    if values:
+        return max(values)
+
+    return None
+
+
+# ============================================================
+# DATE EXTRACTION
+# ============================================================
+
+def extract_date(text):
+    """
+    Extract invoice / bill date.
+    Supports:
+    DD/MM/YYYY
+    DD-MM-YYYY
+    DD.MM.YYYY
+    YYYY-MM-DD
+    """
+
+    if not text:
+        return None
+
+    # Prefer dates near labels such as
+    # Date of Issue / Invoice Date / Bill Date
+    labelled_patterns = [
+        r"(?:date\s+of\s+issue|invoice\s+date|bill\s+date|date)"
+        r"[^\d]{0,30}"
+        r"(\d{1,2}[/-]\d{1,2}[/-]\d{2,4})",
+
+        r"(?:date\s+of\s+issue|invoice\s+date|bill\s+date|date)"
+        r"[^\d]{0,30}"
+        r"(\d{1,2}\.\d{1,2}\.\d{2,4})",
+    ]
+
+    for pattern in labelled_patterns:
+
+        match = re.search(
+            pattern,
+            text,
+            flags=re.IGNORECASE
+        )
+
+        if match:
+
+            date_value = match.group(1)
+
+            parsed = parse_date(
+                date_value
+            )
+
+            if parsed:
+                return parsed
+
+    # Generic DD/MM/YYYY
+    generic_patterns = [
+        r"\b(\d{1,2}[/-]\d{1,2}[/-]\d{4})\b",
+        r"\b(\d{1,2}\.\d{1,2}\.\d{4})\b",
+        r"\b(\d{4}-\d{1,2}-\d{1,2})\b",
+    ]
+
+    for pattern in generic_patterns:
+
+        match = re.search(
+            pattern,
+            text
+        )
+
+        if match:
+
+            parsed = parse_date(
+                match.group(1)
+            )
+
+            if parsed:
+                return parsed
+
+    return None
+
+
+def parse_date(value):
+    """
+    Convert different date formats to DD/MM/YYYY.
+    """
+
+    formats = [
+        "%d/%m/%Y",
+        "%d-%m-%Y",
+        "%d.%m.%Y",
+        "%Y-%m-%d",
+        "%d/%m/%y",
+        "%d-%m-%y",
+        "%d.%m.%y",
+    ]
+
+    for fmt in formats:
+
+        try:
+
+            parsed = datetime.strptime(
+                value,
+                fmt
+            )
+
+            return parsed.strftime(
+                "%d/%m/%Y"
+            )
+
+        except ValueError:
+            continue
+
+    return None
+
+
+# ============================================================
+# MERCHANT EXTRACTION
+# ============================================================
+
+def extract_merchant(text):
+    """
+    Extract merchant / shop name.
+
+    Works with common receipt formats:
+    - Zudio
+    - Shree Computers
+    - restaurants
+    - shops
+    - stores
+    """
+
+    if not text:
+        return None
+
+    lines = [
+        line.strip()
+        for line in text.splitlines()
+        if line.strip()
+    ]
+
+    # --------------------------------------------------------
+    # Known/common patterns
+    # --------------------------------------------------------
+
+    known_patterns = [
+        r"\bzudio\b",
+        r"\btrent limited\b",
+        r"\bshree computers\b",
+    ]
+
+    for pattern in known_patterns:
+
+        match = re.search(
+            pattern,
+            text,
+            flags=re.IGNORECASE
+        )
+
+        if match:
+
+            return match.group(0).strip().title()
+
+    # --------------------------------------------------------
+    # Try first meaningful business-looking line
+    # --------------------------------------------------------
+
+    ignored = [
+        "amount due",
+        "invoice",
+        "receipt",
+        "bill",
+        "tax invoice",
+        "thank you",
+        "date",
+        "bill to",
+        "ref no",
+        "ref",
+        "total",
+        "balance",
+        "current bal",
+    ]
+
+    for line in lines[:12]:
+
+        lower = line.lower()
+
+        # Ignore obvious non-merchant lines
+        if any(
+            item in lower
+            for item in ignored
+        ):
+            continue
+
+        # Ignore lines containing only numbers
+        if re.fullmatch(
+            r"[\d\s₹.,:+\-()]+",
+            line
+        ):
+            continue
+
+        # Ignore phone-number lines
+        digits = re.sub(
+            r"\D",
+            "",
+            line
+        )
+
+        if len(digits) >= 10:
+            continue
+
+        # Ignore very short OCR noise
+        if len(line) < 3:
+            continue
+
+        # Merchant is usually near the top
+        if len(line) <= 80:
+            return line
+
+    return None
+
+
+# ============================================================
+# DESCRIPTION EXTRACTION
+# ============================================================
+
+def extract_description(text):
+    """
+    Extract purchased item / transaction description.
+
+    Supports:
+    - Laptop charger
+    - Shoes
+    - Food items
+    - Restaurant purchases
+    - Generic receipt item rows
+    """
+
+    if not text:
+        return None
+
+    lines = [
+        line.strip()
+        for line in text.splitlines()
+        if line.strip()
+    ]
+
+    # --------------------------------------------------------
+    # First look for common item-table patterns
+    # --------------------------------------------------------
+
+    for line in lines:
+
+        lower = line.lower()
+
+        # Skip totals and headers
+        if any(
+            keyword in lower
             for keyword in [
-                "footwear",
-                "shoes",
-                "sandals",
-                "flip"
+                "amount due",
+                "bill to",
+                "ref no",
+                "date of issue",
+                "thank you",
+                "current bal",
+                "balance",
+                "grand total",
+                "net amount",
             ]
         ):
             continue
 
-        # Remove HSN/product codes
-        line = re.sub(
-            r'\b\d{8,13}\b',
-            ' ',
-            line
+        # Pattern:
+        # 1 Laptop charger 1.0Pcs 400.00 400.00
+        match = re.match(
+            r"^\s*\d+\s+(.+?)"
+            r"\s+\d+(?:\.\d+)?\s*(?:pcs|pc|piece|qty)?"
+            r"\s+\d+(?:\.\d{1,2})?"
+            r"\s+\d+(?:\.\d{1,2})?"
+            r"\s*$",
+            line,
+            flags=re.IGNORECASE
         )
 
-        # Remove decimal amounts
-        line = re.sub(
-            r'\b\d+(?:\.\d{1,2})?\b',
-            ' ',
-            line
-        )
+        if match:
 
-        # Remove common OCR noise
-        line = re.sub(
-            r'[^a-zA-Z\s]',
-            ' ',
-            line
-        )
+            description = match.group(1).strip()
 
-        # Normalize spaces
-        line = re.sub(
-            r'\s+',
-            ' ',
-            line
-        ).strip()
+            if len(description) >= 3:
+                return description
 
-        if line:
-            descriptions.append(line)
+    # --------------------------------------------------------
+    # Generic known purchase keywords
+    # --------------------------------------------------------
 
-    if descriptions:
-        return " ".join(descriptions[:5])
+    purchase_keywords = [
+        "laptop",
+        "charger",
+        "shoes",
+        "sandals",
+        "shirt",
+        "jeans",
+        "food",
+        "pizza",
+        "burger",
+        "grocery",
+        "groceries",
+        "medicine",
+        "tablet",
+        "mobile",
+        "headphone",
+        "keyboard",
+        "mouse",
+        "cable",
+        "restaurant",
+        "dinner",
+        "lunch",
+        "breakfast",
+    ]
+
+    candidates = []
+
+    for line in lines:
+
+        lower = line.lower()
+
+        if any(
+            keyword in lower
+            for keyword in purchase_keywords
+        ):
+
+            # Remove leading serial number
+            cleaned = re.sub(
+                r"^\s*\d+\s+",
+                "",
+                line
+            )
+
+            # Remove monetary values
+            cleaned = re.sub(
+                r"₹?\s*[\d,]+\.\d{1,2}",
+                "",
+                cleaned
+            )
+
+            # Remove quantities
+            cleaned = re.sub(
+                r"\b\d+(?:\.\d+)?\s*(?:pcs|pc|qty)\b",
+                "",
+                cleaned,
+                flags=re.IGNORECASE
+            )
+
+            cleaned = re.sub(
+                r"\s+",
+                " ",
+                cleaned
+            ).strip()
+
+            if len(cleaned) >= 3:
+                candidates.append(cleaned)
+
+    if candidates:
+        return candidates[0]
 
     return None
-# ==========================================
-# RECEIPT PROCESSING + NLP
-# ==========================================
 
-def process_receipt(
-    image_path: str
-):
 
-    text = extract_text_from_receipt(
+# ============================================================
+# PROCESS COMPLETE RECEIPT
+# ============================================================
+
+def process_receipt(image_path):
+    """
+    Complete receipt processing pipeline.
+    """
+
+    raw_text = extract_text(
         image_path
     )
 
-    amount = extract_amount(text)
+    cleaned_text = clean_ocr_text(
+        raw_text
+    )
 
-    receipt_date = extract_date(text)
+    merchant = extract_merchant(
+        cleaned_text
+    )
 
-    merchant = extract_merchant(text)
+    amount = extract_amount(
+        cleaned_text
+    )
 
-    description = extract_description(text)
+    date = extract_date(
+        cleaned_text
+    )
 
-    # --------------------------------------
-    # Predict expense category
-    # --------------------------------------
+    description = extract_description(
+        cleaned_text
+    )
+
+    # --------------------------------------------------------
+    # AI CATEGORY PREDICTION
+    # --------------------------------------------------------
 
     predicted_category = None
 
     if description:
 
-        predicted_category = (
-            predict_expense_category(
-                description
+        try:
+
+            from .expense_classifier import (
+                predict_category
             )
-        )
+
+            predicted_category = (
+                predict_category(
+                    description
+                )
+            )
+
+        except Exception:
+            predicted_category = None
 
     return {
-        "text": text,
+        "text": cleaned_text,
         "merchant": merchant,
         "amount": amount,
-        "date": receipt_date,
+        "date": date,
         "description": description,
-        "predicted_category": predicted_category
+        "predicted_category": predicted_category,
     }
