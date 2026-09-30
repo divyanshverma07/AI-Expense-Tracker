@@ -72,7 +72,9 @@ def root():
     return {
         "message": "AI Expense Tracker API is running"
     }
-
+@app.get("/healthz")
+def healthz():
+    return {"status": "ok"}
 
 # ==========================================
 # DATABASE TEST
