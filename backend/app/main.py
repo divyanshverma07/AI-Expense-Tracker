@@ -24,18 +24,14 @@ from .routers import budget_prediction
 # CREATE FASTAPI APPLICATION
 # ==========================================
 
-app = FastAPI(
-    title="AI Expense Tracker API",
-    description="Backend API for AI-Based Expense Tracker",
-    version="1.0.0"
-)
-
+app = FastAPI()
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
+        "https://ai-expense-tracker-1-gv1y.onrender.com",  # your frontend
         "http://localhost:5173",
         "http://127.0.0.1:5173",
-        "https://ai-expense-tracker-1-gv1y.onrender.com",
+        "http://localhost:3000",
     ],
     allow_credentials=True,
     allow_methods=["*"],
