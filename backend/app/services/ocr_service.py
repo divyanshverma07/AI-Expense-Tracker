@@ -12,9 +12,8 @@ import pytesseract
 
 TESSERACT_PATH = r"C:\Program Files\Tesseract-OCR\tesseract.exe"
 
-if os.path.exists(TESSERACT_PATH):
+if os.name == "nt" and os.path.exists(TESSERACT_PATH):
     pytesseract.pytesseract.tesseract_cmd = TESSERACT_PATH
-
 
 # ============================================================
 # IMAGE PREPROCESSING
